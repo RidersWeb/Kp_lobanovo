@@ -6,7 +6,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
-GROUP_ID = os.getenv("GROUP_ID")
+GROUP_ID_STR = os.getenv("GROUP_ID")
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не найден в .env файле")
@@ -22,8 +22,15 @@ else:
 if not ADMIN_IDS:
     raise ValueError("ADMIN_IDS не найден в .env файле (укажите ID админов через запятую)")
 
-if not GROUP_ID:
+if not GROUP_ID_STR:
     raise ValueError("GROUP_ID не найден в .env файле")
+
+# Преобразуем GROUP_ID в int (если это числовой ID) или оставляем строкой (если это username)
+try:
+    GROUP_ID = int(GROUP_ID_STR)
+except ValueError:
+    # Если не число, значит это username группы (например, @mygroup)
+    GROUP_ID = GROUP_ID_STR
 
 
 def is_admin(user_id: int) -> bool:
