@@ -119,3 +119,35 @@ async def search_by_full_name(full_name: str) -> list:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
+
+async def get_statistics() -> dict:
+    """Получить статистику по пользователям."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        
+        # Общее количество
+        async with db.execute("SELECT COUNT(*) as total FROM users") as cursor:
+            total = (await cursor.fetchone())["total"]
+        
+        # По статусам
+        async with db.execute("SELECT status, COUNT(*) as count FROM users GROUP BY status") as cursor:
+            status_counts = {row["status"]: row["count"] for row in await cursor.fetchall()}
+        
+        return {
+            "total": total,
+            "pending": status_counts.get("pending", 0),
+            "approved": status_counts.get("approved", 0),
+            "rejected": status_counts.get("rejected", 0)
+        }
+
+
+async def get_all_users() -> list:
+    """Получить всех пользователей."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users ORDER BY created_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
