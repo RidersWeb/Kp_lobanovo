@@ -29,46 +29,71 @@ async def approve_user(callback: CallbackQuery, bot: Bot):
         
         # Генерируем одноразовую ссылку-приглашение
         invite_url = None
-        try:
-            # Проверяем, что GROUP_ID установлен
-            from config import GROUP_ID
-            from aiogram.exceptions import TelegramMigrateToChat
+        from config import GROUP_ID
+        from aiogram.exceptions import TelegramMigrateToChat, TelegramBadRequest
+        
+        if not GROUP_ID:
+            logger.error("GROUP_ID не установлен в конфигурации")
+        else:
+            current_group_id = GROUP_ID
+            logger.info(f"Попытка создать invite link для группы {current_group_id}")
             
-            if not GROUP_ID:
-                logger.error("GROUP_ID не установлен в конфигурации")
-            else:
-                current_group_id = GROUP_ID
+            try:
+                # Пробуем создать ссылку с текущим ID
+                invite_link = await bot.create_chat_invite_link(
+                    chat_id=current_group_id,
+                    member_limit=1,
+                    name=f"invite_{telegram_id}"
+                )
+                invite_url = invite_link.invite_link
+                logger.info(f"✅ Создана invite ссылка для пользователя {telegram_id}: {invite_url}")
+                
+            except TelegramMigrateToChat as migrate_error:
+                # Группа была преобразована в супергруппу, используем новый ID
+                new_chat_id = migrate_error.migrate_to_chat_id
+                logger.warning(f"⚠️ Группа {current_group_id} была преобразована в супергруппу {new_chat_id}")
+                
                 try:
                     invite_link = await bot.create_chat_invite_link(
-                        chat_id=current_group_id,
+                        chat_id=new_chat_id,
                         member_limit=1,
                         name=f"invite_{telegram_id}"
                     )
                     invite_url = invite_link.invite_link
-                    logger.info(f"Создана invite ссылка для пользователя {telegram_id}: {invite_url}")
-                except TelegramMigrateToChat as migrate_error:
-                    # Группа была преобразована в супергруппу, используем новый ID
-                    new_chat_id = migrate_error.migrate_to_chat_id
-                    logger.warning(f"Группа {current_group_id} была преобразована в супергруппу {new_chat_id}")
+                    logger.info(f"✅ Создана invite ссылка для пользователя {telegram_id} (новая группа): {invite_url}")
+                    logger.warning(f"⚠️ ВАЖНО: Обновите GROUP_ID в .env файле на новый ID: {new_chat_id}")
+                except Exception as retry_error:
+                    logger.error(f"❌ Ошибка при создании invite link для новой группы {new_chat_id}: {retry_error}", exc_info=True)
+                    
+            except TelegramBadRequest as bad_request:
+                # Обрабатываем различные ошибки BadRequest
+                error_message = str(bad_request)
+                logger.error(f"❌ TelegramBadRequest при создании invite link: {error_message}")
+                
+                # Пробуем получить информацию о группе для диагностики
+                try:
+                    chat = await bot.get_chat(current_group_id)
+                    logger.info(f"📋 Информация о группе: название='{chat.title}', тип={chat.type}, ID={chat.id}")
+                    
+                    # Проверяем, является ли бот администратором
                     try:
-                        invite_link = await bot.create_chat_invite_link(
-                            chat_id=new_chat_id,
-                            member_limit=1,
-                            name=f"invite_{telegram_id}"
-                        )
-                        invite_url = invite_link.invite_link
-                        logger.info(f"Создана invite ссылка для пользователя {telegram_id} (новая группа): {invite_url}")
-                        logger.warning(f"ВАЖНО: Обновите GROUP_ID в .env файле на новый ID: {new_chat_id}")
-                    except Exception as retry_error:
-                        logger.error(f"Ошибка при создании invite link для новой группы {new_chat_id}: {retry_error}")
-        except Exception as e:
-            logger.error(f"Ошибка при создании invite link для группы {GROUP_ID}: {e}", exc_info=True)
-            # Пробуем получить информацию о группе для диагностики
-            try:
-                chat = await bot.get_chat(GROUP_ID)
-                logger.info(f"Информация о группе: {chat.title}, тип: {chat.type}, ID: {chat.id}")
-            except Exception as chat_error:
-                logger.error(f"Не удалось получить информацию о группе: {chat_error}")
+                        bot_member = await bot.get_chat_member(current_group_id, bot.id)
+                        logger.info(f"🤖 Бот в группе: статус={bot_member.status}, может приглашать={hasattr(bot_member, 'can_invite_users')}")
+                    except Exception as member_error:
+                        logger.error(f"❌ Не удалось получить информацию о боте в группе: {member_error}")
+                        
+                except Exception as chat_error:
+                    logger.error(f"❌ Не удалось получить информацию о группе {current_group_id}: {chat_error}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Неожиданная ошибка при создании invite link для группы {current_group_id}: {e}", exc_info=True)
+                
+                # Пробуем получить информацию о группе для диагностики
+                try:
+                    chat = await bot.get_chat(current_group_id)
+                    logger.info(f"📋 Информация о группе: название='{chat.title}', тип={chat.type}, ID={chat.id}")
+                except Exception as chat_error:
+                    logger.error(f"❌ Не удалось получить информацию о группе: {chat_error}")
         
         # Отправляем уведомление пользователю
         if invite_url:
